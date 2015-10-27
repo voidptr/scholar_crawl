@@ -58,7 +58,7 @@ import sys
 
 import unicodedata
 import subprocess
-import Levenshtein as ld
+import levenshtein as ld
 
 
 ## GLOBAL VARIABLES GOVERNING THE TOR STATE
@@ -185,13 +185,35 @@ class CitationScraper():
 
     def scrub_depr(self, string):
         string = string.replace('', '').replace('', '')
-        string = string.replace('\xe2\x80\x93','-')
-        string = string.replace('\xcb\x86','^')
-        string = string.replace('\xe2\x80\x99',"'")
+
         string = string.replace('\xe2\x80\x90','-')
+        string = string.replace('\xe2\x80\x91','-')
+        string = string.replace('\xe2\x80\x92','-')
+        string = string.replace('\xe2\x80\x93','-')
+        string = string.replace('\xe2\x80\x94','--')
+
         string = string.replace('\xe2\x80\x98',"'")
+        string = string.replace('\xe2\x80\x99',"'")
+        string = string.replace('\xe2\x80\x9a',"'")
+        string = string.replace('\xe2\x80\x9b',"'")
+
+        string = string.replace('\xe2\x80\x9c',"\"")
+        string = string.replace('\xe2\x80\x9d',"\"")
+        string = string.replace('\xe2\x80\x9e',"\"")
+        string = string.replace('\xe2\x80\x9f',"\"")
+
+        string = string.replace('\xcb\x86','^')
         string = string.replace('\xc2\xa0',"-")
+
         string = ' '.join(string.split())
+
+        #try:
+        #    unicode(string).encode(sys.stdout.encoding, 'replace')
+        #except UnicodeDecodeError as e:
+            
+            
+
+
         return string
 
 
@@ -203,23 +225,40 @@ class CitationScraper():
         Fetching new IPs until it is successful
         """
 
-        attemptct = 0;
-        while True: ## keep looping until you can get through
-            try:
-                querier = sch.ScholarQuerier(author=author, count=0)
-                querier.query(title)
-                break
-            except Exception as inst:
-                print inst
-                print "FAILED TO FETCH DATA! RESTARTING TOR FOR NEW IP. Attempt: " + str(attemptct)
-                self.TorProxy.restart()           
-                attemptct = attemptct + 1
+        attemptct2 = 0;
+        articles = 0;
+        while True:
+            attemptct = 0;
 
-            if attemptct > 10:
-                print "GIVING UP."
+            while True: ## keep looping until you can get through
+                try:
+                    querier = sch.ScholarQuerier(author=author, count=0)
+                    querier.query(title)
+                    break
+                except Exception as inst:
+                    print inst
+                    print "FAILED TO FETCH DATA! RESTARTING TOR FOR NEW IP. Attempt: " + str(attemptct)
+                    self.TorProxy.restart()           
+                    attemptct = attemptct + 1
+
+                if attemptct > 10:
+                    print "GIVING UP."
+                    break  
+
+            articles = querier.articles
+
+            if len(articles) > 0:
+                break
+            else:
+                attemptct2 = attemptct2 + 1
+                print "EMPTY RESULTS. Something is wrong, so restarting tor. Attempt: " + str(attemptct2)
+                self.TorProxy.restart()
+
+            if attemptct2 > 3:
+                print "FUUUCK GIVING UP."
                 break  
 
-        articles = querier.articles
+         
 
         print "ARTICLES FOUND:"
         found = False;
@@ -242,7 +281,7 @@ class CitationScraper():
                 print
                 return (True, art['num_citations'])            
             else:
-                distance = ld.distance(queriedtitlelower, retreivedtitlelower)
+                distance = ld.levenshtein(queriedtitlelower, retreivedtitlelower)
                 maxdist = (len(queriedtitlelower) * .1)
                 if (distance < maxdist):
                     print "LEVENSHTEIN DISTANCE IS LESS THAN 10% (" + str(maxdist) + "): " + str(distance) + " -- Num Citations " + str(art['num_citations'])
@@ -265,6 +304,7 @@ def main():
     fmt = optparse.IndentedHelpFormatter(max_help_position=50,
                                          width=100)
     parser = optparse.OptionParser(usage=usage, formatter=fmt)
+    parser.add_option("--seq", dest="seq", type="int", help = "Start Processing at item # seq")
     options, args = parser.parse_args()
 
     if len(args) < 2:
@@ -289,6 +329,11 @@ def main():
 
             count = 0
             for row in pubs:
+                if count < options.seq:
+                    count = count + 1
+                    print "."
+                    continue
+
                 # clean up the title line
                 title = row['Title']
                 title = Scraper.scrub(title)
