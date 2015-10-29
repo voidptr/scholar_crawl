@@ -4,10 +4,14 @@ This module provides classes for querying Google Scholar and parsing
 returned results.  It currently *only* processes the first results
 page.  It is not a recursive crawler.
 """
-# Version: 1.0 -- $Date: 2013-10-09 13:48:12 -0500 (Wed, 9 Oct 2013) $
+# Version: 3.0 -- $Date: 2015-10-29 14:33:12 -0500 (Thu, 29 Oct 2015) $
 #
 # ChangeLog
 # ---------
+#
+# 3.0:  Updated for 2015. Updated the scholar.py library
+#
+# 2.0:  Updated for 2014
 #
 # 1.0:  Initial Revision
 #
@@ -65,12 +69,51 @@ import levenshtein as ld
 tor = None
 tor_started = False
 
-class TorProxy():
+class Proxy():
+    def __init__(self, verbose=True):
+        self.running = True
+        self.process = None
+        self.verbose = verbose
+
+    def stop(self):
+        return
+
+    def start(self):
+        return
+
+    def kill(self):
+        return
+
+    def init(self):
+        return
+
+    def restart(self):
+        return
+
+    def fetch_ip(self):
+        #return (True, 'skipped')
+
+        if self.verbose:
+            print "FETCHING IP"
+
+        count = 0
+        while True:
+            try:
+                return (True, (urllib2.urlopen("http://www.ifconfig.me/ip").read()))
+            except Exception as inst:
+                if self.verbose:
+                    print inst
+                    print "Failed to fetch IP. Trying again."
+                count = count + 1
+                if count > 5:
+                    return (False, '')
+
+class TorProxy(Proxy):
     """
     A class providing a singleton TOR proxy.
     """
 
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=True):
         self.running = False
         self.process = None
         self.verbose = verbose
@@ -80,11 +123,18 @@ class TorProxy():
             print "STOPPING TOR"
 
         if self.running and self.process != None:
-            self.process.terminate();
+            try:
+                self.process.terminate()
+            except:
+                self.kill()
+                self.running = False
+                return True
 
+            print "j1"
             while True:
                 line = self.process.stdout.readline()
                 line = line.strip()
+                print line
                 if line.find("Catching signal TERM, exiting cleanly.") > -1:
                     if self.verbose:
                         print line
@@ -101,25 +151,42 @@ class TorProxy():
             print "STARTING TOR"
 
         if self.running == False:
-            self.process = subprocess.Popen("tor", stdout=subprocess.PIPE)
+#            self.process = subprocess.Popen("tor", stdout=subprocess.PIPE)
+#            self.process = subprocess.Popen("sudo -u tor tor", stdout=subprocess.PIPE)
+            self.process = subprocess.Popen(['sudo','-u','tor', 'tor'], 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            #out, err = self.process.communicate()
 
+            if self.verbose:
+                print "started the process."
+
+
+            #for line in out:
             while True:
+#                if self.verbose: 
+#                    print "---l1"
                 line = self.process.stdout.readline()
                 line = line.strip();
+ #               print "l2"
+                print line
 
-                if line.find("Bootstrapped 100%: Done.") > -1:
+                if ((line.find("Bootstrapped 100%: Done.") > -1) or (line.find("Opening Socks listener") > -1)):
+                    print "HEY FUCK YOU FOUND IT"
                     if self.verbose:
                         print line
 
                     time.sleep(2)
                     self.running = True
                     return True
+                #print "l3"
                 if line.find("Could not bind to 127.0.0.1:9050: Address already in use. Is Tor already running?") > -1:
                     if self.verbose:
                         print line
                     return False
+            #print "SOMETHING TERRIBLE HAS HAPPENED AND WE FELL THROUGH"
 
         else:
+            print "k1"
             if self.verbose:
                 print "TOR IS ALREADY RUNNING"
             return False
@@ -127,25 +194,11 @@ class TorProxy():
     def kill(self):
         if self.verbose:
             print "KILLING OLD TOR PROCESS AND TRYING AGAIN"
-        subprocess.Popen(["killall", "tor"]);
+        subprocess.Popen(["sudo", "killall", "tor"]);
         time.sleep(2)
         self.running = False ## it had better be :(
         
-    def fetch_ip(self):
-        if self.verbose:
-            print "FETCHING IP"
 
-        count = 0
-        while True:
-            try:
-                return (True, (urllib2.urlopen("http://www.ifconfig.me/ip").read()))
-            except Exception as inst:
-                if self.verbose:
-                    print inst
-                    print "Failed to fetch IP. Trying again."
-                count = count + 1
-                if count > 5:
-                    return (False, '')
 
     def init(self):
         count = 0
@@ -166,12 +219,17 @@ class TorProxy():
                  
 
 class CitationScraper():
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, usetor=False):
         self.verbose = verbose
-        self.TorProxy = TorProxy(verbose)
+        self.usetor = usetor
+
+        if self.usetor:
+            self.Proxy = TorProxy(verbose)
+        else:
+            self.Proxy = Proxy(verbose)
     
     def init(self):
-        self.TorProxy.init()
+        self.Proxy.init()
    
     def scrub(self, string):
         if isinstance(string, str):
@@ -216,6 +274,49 @@ class CitationScraper():
 
         return string
 
+    def doQuery(self, author, title):
+
+
+        if (author):
+#            commandwhole = "python scholar.py -c 1 -t -a \"" + author + "\" -A \"" + title + "\""
+            command = ['python', 'scholar.py', '-c', '1', '-t', '-a', '"'+author+'"', '-A', '"' + title + '"'] 
+        else:
+#            commandwhole = "python scholar.py -c 1 -t -A \"" + title + "\""    
+            command = ['python', 'scholar.py', '-c', '1', '-t', '-A', '"' + title + '"']
+        #command = commandwhole.split()
+
+        print command        
+        print " ".join(command)
+
+#        command = ['python', 'scholar.py', '-c', '1', '-t', '-a', author, '-s', title] 
+        #self.querything = subprocess.Popen(command, stdout=subprocess.PIPE)
+        output = subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0]
+
+        print "HERE WE GO"
+        print output
+        print "DONE WITH OUTPUT"
+
+
+#        while True:
+#
+#           line = self.querything.stdout.readline()
+#            if line == '':
+#                break;
+#            line = line.strip();
+#            print line
+
+#        querier = sch.ScholarQuerier()
+#        query = sch.SearchScholarQuery()
+        #settings = sch.ScholarSettings()
+
+#        query.set_author(author)
+#        query.set_words_some(title)
+#        query.set_scope(True)
+#        query.set_include_citations(True)
+#        query.set_num_page_results(1)
+#        querier.send_query(query)
+
+ #       return querier
 
 
 
@@ -224,37 +325,48 @@ class CitationScraper():
         Tries to query Google Scholar through the Tor Proxy, 
         Fetching new IPs until it is successful
         """
+        maxattempts = 1 #10
+        maxattempts2 = 1 #3
 
-        attemptct2 = 0;
-        articles = 0;
+        attemptct2 = 0
+        articles = 0
+        querier = None
         while True:
-            attemptct = 0;
+            attemptct = 0
 
-            while True: ## keep looping until you can get through
+            while True: ## keep looping until you can't get through
                 try:
-                    querier = sch.ScholarQuerier(author=author, count=0)
-                    querier.query(title)
+
+                    self.doQuery(author, title)
+                    #print querier.articles
+                    #print sch.txt(querier)
+
+#                    querier = sch.ScholarQuerier(author=author, count=0)
+#                    querier.query(title)
                     break
                 except Exception as inst:
                     print inst
                     print "FAILED TO FETCH DATA! RESTARTING TOR FOR NEW IP. Attempt: " + str(attemptct)
-                    self.TorProxy.restart()           
+                    self.Proxy.restart()           
                     attemptct = attemptct + 1
 
-                if attemptct > 10:
+                if attemptct >= maxattempts:
                     print "GIVING UP."
                     break  
 
-            articles = querier.articles
+            articles = []
+            if (querier):
+                articles = querier.articles
+            print articles
 
             if len(articles) > 0:
                 break
             else:
                 attemptct2 = attemptct2 + 1
                 print "EMPTY RESULTS. Something is wrong, so restarting tor. Attempt: " + str(attemptct2)
-                self.TorProxy.restart()
+                self.Proxy.restart()
 
-            if attemptct2 > 3:
+            if attemptct2 >= maxattempts2:
                 print "FUUUCK GIVING UP."
                 break  
 
@@ -264,6 +376,8 @@ class CitationScraper():
         found = False;
 
 
+        ## tmp
+        articles = []
         for art in articles:
 
             queriedtitlelower = self.scrub(title.lower())
@@ -305,6 +419,8 @@ def main():
                                          width=100)
     parser = optparse.OptionParser(usage=usage, formatter=fmt)
     parser.add_option("--seq", dest="seq", type="int", help = "Start Processing at item # seq")
+    parser.add_option("--usetor", dest="usetor", action="store_true", help="Do the scraping via Tor")
+
     options, args = parser.parse_args()
 
     if len(args) < 2:
@@ -314,7 +430,7 @@ def main():
     pubsfile = args[0]
     outputfile = args[1]
 
-    Scraper = CitationScraper(verbose=True)
+    Scraper = CitationScraper(verbose=True,usetor=options.usetor)
     Scraper.init()
 
     with open(pubsfile, 'rb') as csvfile:
