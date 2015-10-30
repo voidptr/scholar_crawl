@@ -99,6 +99,9 @@ class Proxy():
         count = 0
         while True:
             try:
+                proxy = urllib2.ProxyHandler({'http': '127.0.0.1'})
+                opener = urllib2.build_opener(proxy)
+                urllib2.install_opener(opener)
                 return (True, (urllib2.urlopen("http://www.ifconfig.me/ip").read()))
             except Exception as inst:
                 if self.verbose:
